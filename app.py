@@ -366,14 +366,18 @@ def render_intelligence_card(card: IntelligenceCard):
     score_abs = abs(card.score)
     stars = min(5, max(1, round(score_abs / 2)))  # 将 -10~+10 转换为 1~5 星
 
-    # 格式化发布时间 - 显示完整日期和具体时间
+    # 格式化发布时间 - 智能显示日期和时间
     if not card.published_date or card.published_date == "":
         time_display = "时间未知"
     else:
         try:
             pub_time = datetime.fromisoformat(card.published_date.replace("Z", "+00:00"))
-            # 显示完整日期：YYYY-MM-DD HH:MM
-            time_display = pub_time.strftime("%Y-%m-%d %H:%M")
+            # 如果时间是 00:00（午夜），说明只有日期没有具体时间，只显示日期
+            if pub_time.hour == 0 and pub_time.minute == 0:
+                time_display = pub_time.strftime("%Y-%m-%d")
+            else:
+                # 有具体时间，显示完整格式：YYYY-MM-DD HH:MM
+                time_display = pub_time.strftime("%Y-%m-%d %H:%M")
         except:
             time_display = card.published_date[:16] if len(card.published_date) > 16 else card.published_date
 
