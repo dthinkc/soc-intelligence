@@ -269,6 +269,41 @@ class IntelligenceAnalyzer:
                 ai_date = result.get("published_date") or ""
                 logger.info(f"Date tracking - Original: '{orig_date}', AI: '{ai_date}'")
 
+                # 日期验证和选择逻辑
+                def validate_date(date_str: str) -> bool:
+                    """验证日期是否合理（不能是未来日期）"""
+                    if not date_str:
+                        return False
+                    try:
+                        from datetime import datetime, timezone
+                        # 解析日期
+                        if 'T' in date_str:
+                            dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                        else:
+                            dt = datetime.strptime(date_str, '%Y-%m-%d')
+                        # 检查是否是未来日期（不允许未来日期）
+                        now = datetime.now(timezone.utc)
+                        if dt > now:
+                            logger.warning(f"Date '{date_str}' is in the future (now: {now}), rejecting")
+                            return False
+                        # 检查年份是否合理（SOC 2024 年成立，不接受 2023 年之前的日期）
+                        if dt.year < 2024:
+                            logger.warning(f"Date '{date_str}' is before SOC was founded (2024), rejecting")
+                            return False
+                        return True
+                    except Exception as e:
+                        logger.debug(f"Failed to validate date '{date_str}': {e}")
+                        return False
+
+                # 选择有效日期：优先使用原始日期，但必须验证；如果无效则使用 AI 日期
+                selected_date = ""
+                if orig_date and validate_date(orig_date):
+                    selected_date = orig_date
+                elif ai_date and validate_date(ai_date):
+                    selected_date = ai_date
+                else:
+                    logger.info(f"Both original and AI dates are invalid, using empty string")
+
                 card = IntelligenceCard(
                     title=html.unescape(result.get("title", "")),
                     summary=html.unescape(result.get("summary", "")),
@@ -278,8 +313,8 @@ class IntelligenceAnalyzer:
                     key_point=html.unescape(result.get("key_point", "")),
                     url=result.get("url", ""),
                     source=result.get("source", ""),
-                    # 优先使用原始新闻的日期，AI 可能会改变格式
-                    published_date=orig_date if orig_date else ai_date,
+                    # 使用验证后的日期
+                    published_date=selected_date,
                     category=result.get("category", "C"),  # A=噪音, B=时间变化, C=长期逻辑冲击
                     data_source=news.get("data_source", "unknown"),
                 )
