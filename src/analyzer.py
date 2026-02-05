@@ -270,10 +270,10 @@ class IntelligenceAnalyzer:
                 logger.info(f"Date tracking - Original: '{orig_date}', AI: '{ai_date}'")
 
                 # 日期验证和选择逻辑
-                def validate_date(date_str: str) -> bool:
-                    """验证日期是否合理（不能是未来日期）"""
+                def validate_and_fix_date(date_str: str) -> str:
+                    """验证并修正日期，返回修正后的日期字符串，如果无效则返回空字符串"""
                     if not date_str:
-                        return False
+                        return ""
                     try:
                         from datetime import datetime, timezone
                         # 解析日期
@@ -281,28 +281,56 @@ class IntelligenceAnalyzer:
                             dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
                         else:
                             dt = datetime.strptime(date_str, '%Y-%m-%d')
-                        # 检查是否是未来日期（不允许未来日期）
+
+                        # 检查是否是未来日期
                         now = datetime.now(timezone.utc)
                         if dt > now:
-                            logger.warning(f"Date '{date_str}' is in the future (now: {now}), rejecting")
-                            return False
-                        # 检查年份是否合理（SOC 2024 年成立，不接受 2023 年之前的日期）
-                        if dt.year < 2024:
-                            logger.warning(f"Date '{date_str}' is before SOC was founded (2024), rejecting")
-                            return False
-                        return True
+                            logger.warning(f"Date '{date_str}' is in the future (now: {now}), attempting to fix...")
+                            # 尝试将年份减 1（Tavily 经常把 2025 年误解析为 2026 年）
+                            try:
+                                if dt.month == now.month and dt.day == now.day:
+                                    # 如果是今天的日期但时间在未来，可能是时区问题，保持原样
+                                    pass
+                                else:
+                                    # 将年份减 1
+                                    dt = dt.replace(year=dt.year - 1)
+                                    logger.info(f"Fixed date by subtracting 1 year: '{date_str}' -> '{dt.isoformat()}'")
+                                    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                            except:
+                                pass
+                            # 如果修正后仍然是未来日期，拒绝
+                            if dt > now:
+                                logger.warning(f"Date '{date_str}' is still in the future after fix, rejecting")
+                                return ""
+
+                        # 检查年份是否合理（接受 2023 年及以后的日期）
+                        if dt.year < 2023:
+                            logger.warning(f"Date '{date_str}' is too old (before 2023), rejecting")
+                            return ""
+
+                        # 日期有效，返回标准格式
+                        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
                     except Exception as e:
                         logger.debug(f"Failed to validate date '{date_str}': {e}")
-                        return False
+                        return ""
 
                 # 选择有效日期：优先使用原始日期，但必须验证；如果无效则使用 AI 日期
                 selected_date = ""
-                if orig_date and validate_date(orig_date):
-                    selected_date = orig_date
-                elif ai_date and validate_date(ai_date):
-                    selected_date = ai_date
-                else:
-                    logger.info(f"Both original and AI dates are invalid, using empty string")
+
+                # 先处理原始日期
+                if orig_date:
+                    fixed_orig = validate_and_fix_date(orig_date)
+                    if fixed_orig:
+                        selected_date = fixed_orig
+
+                # 如果原始日期无效，尝试使用 AI 日期
+                if not selected_date and ai_date:
+                    fixed_ai = validate_and_fix_date(ai_date)
+                    if fixed_ai:
+                        selected_date = fixed_ai
+
+                if not selected_date and not orig_date and not ai_date:
+                    logger.info(f"No date available for this news item")
 
                 card = IntelligenceCard(
                     title=html.unescape(result.get("title", "")),
@@ -313,7 +341,7 @@ class IntelligenceAnalyzer:
                     key_point=html.unescape(result.get("key_point", "")),
                     url=result.get("url", ""),
                     source=result.get("source", ""),
-                    # 使用验证后的日期
+                    # 使用验证和修正后的日期
                     published_date=selected_date,
                     category=result.get("category", "C"),  # A=噪音, B=时间变化, C=长期逻辑冲击
                     data_source=news.get("data_source", "unknown"),

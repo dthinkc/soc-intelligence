@@ -314,14 +314,14 @@ PHMSA 批准 + 地方许可 + 法律通关 = 现金流恢复
             ai_date = result.get("published_date", "")
             orig_date = news.get("published_date", "")
 
-            # 验证 AI 提取的日期是否合理（SOC 公司 2024 年后才存在，日期应在 2024-01-01 之后）
+            # 验证 AI 提取的日期是否合理（接受 2023 年及以后的日期）
             def is_date_reasonable(date_str: str) -> bool:
                 """检查日期是否在合理范围内"""
                 if not date_str:
                     return False
                 try:
-                    # 简单检查：日期应该以 2024 或 2025 开头
-                    return date_str.startswith("2024") or date_str.startswith("2025") or date_str.startswith("2026")
+                    # 简单检查：日期应该以 2023、2024、2025 或 2026 开头
+                    return date_str.startswith("2023") or date_str.startswith("2024") or date_str.startswith("2025") or date_str.startswith("2026")
                 except:
                     return False
 
