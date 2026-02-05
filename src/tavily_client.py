@@ -333,29 +333,32 @@ class TavilySearchClient:
             self._seen_urls.add(url)
             self._seen_hashes.add(content_hash)
 
-            # 获取发布时间 - 优先级：Tavily > 内容提取 > URL抓取
-            # 注意：不再使用当前日期作为兜底，保留空日期以避免混淆
-            # Tavily 可能返回 null，需要转换为空字符串
-            published_date = item.get("published_date") or ""
+            # 获取发布时间 - 新优先级：URL抓取 > Tavily > 内容提取
+            # URL抓取最准确（包含具体时间），Tavily 可能只有日期（00:00）
+            published_date = ""
 
-            # 如果 Tavily 没有返回发布时间，尝试从内容中提取日期
+            # 1. 优先尝试从 URL 页面抓取日期（最准确，包含具体时间）
+            try:
+                fetched_date = self.fetch_publish_date_from_url(url)
+                if fetched_date:
+                    published_date = fetched_date
+                    logger.info(f"Fetched accurate date from URL: {published_date}")
+            except Exception as e:
+                logger.debug(f"Failed to fetch date from URL: {e}")
+
+            # 2. 如果 URL 抓取失败，使用 Tavily 返回的日期
+            if not published_date:
+                tavily_date = item.get("published_date") or ""
+                if tavily_date:
+                    published_date = tavily_date
+                    logger.debug(f"Using Tavily date: {published_date}")
+
+            # 3. 如果 Tavily 也没有，尝试从内容中提取日期
             if not published_date:
                 published_date = self._extract_date_from_content(content, title)
                 logger.debug(f"Extracted from content: {published_date}")
 
-            # 如果内容中也没有，尝试从 URL 页面抓取日期（带超时保护）
-            if not published_date:
-                try:
-                    fetched_date = self.fetch_publish_date_from_url(url)
-                    if fetched_date:
-                        published_date = fetched_date
-                        logger.info(f"Fetched date from URL: {published_date}")
-                    else:
-                        logger.debug(f"No date found in URL page for: {title[:50]}...")
-                except Exception as e:
-                    logger.debug(f"Failed to fetch date from URL: {e}")
-
-            # 如果所有方法都失败，保留空字符串（不使用兜底日期）
+            # 如果所有方法都失败，保留空字符串
             if not published_date:
                 logger.debug(f"No date found for: {title[:50]}... (will use empty string)")
 
